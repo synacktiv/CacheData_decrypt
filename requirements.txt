@@ -1,0 +1,6 @@
+dpapick3>=0.3.3
+wheel
+pytz
+pyOpenSSL
+lxml
+hexdump
