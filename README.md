@@ -109,3 +109,12 @@ python3 decrypt_cachedata.py password -C CacheData -P password.txt
     ...
 }
 ```
+
+## Credits
+
+PRT decryption based on password (i.e not PIN) was already implemented in the
+script [PRT_Utils.ps1](https://github.com/Gerenios/AADInternals/blob/49a9659b60672f08428e72148b66dfe4629562da/PRT_Utils.ps1#L858)
+from [AADInternals](https://github.com/Gerenios/AADInternals) repository.
+
+Also, our script uses several code snippets directly extracted from
+[dpapilab-ng](https://github.com/tijldeneut/dpapilab-ng) repository.
