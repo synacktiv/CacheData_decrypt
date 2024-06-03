@@ -8,6 +8,7 @@ import hexdump
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.backends import default_backend
+from .dpapi_cred_key import DPAPICredKeyBlob
 import dpapick3.eater as eater
 
 
@@ -136,21 +137,6 @@ class ScardCacheDataBlob(eater.DataStruct):
             self.dwScardCredKeySize + 
             0x28
         )
-
-
-class DPAPICredKeyBlob(eater.DataStruct):
-    def __init__(self, raw):
-        eater.DataStruct.__init__(self, raw)
-
-    def parse(self, data):
-        self.dwBlobSize = data.eat("L")
-        self.dwField4 = data.eat("L")
-        self.dwCredKeyOffset = data.eat("L")
-        self.dwCredKeySize = data.eat("L")
-        self.Guid = "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x" % data.eat("L2H8B")
-        assert data.ofs == self.dwCredKeyOffset
-        self.CredKey = data.eat_string(self.dwCredKeySize)
-
 
 def decrypt_encrypted_AESKey2(
     aes_key_encrypted_2, aes_key_decrypted_1, IVKey1

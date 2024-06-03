@@ -68,9 +68,11 @@ def decryptWithPIN(mk, pkBlob, sSalt, iRounds, sPIN) -> bytes:
                                 
 def brutePIN(arguments, mk, pkBlob, sSalt, iRounds, bf):
     for PIN in arguments.pins:
+        if arguments.verbose:
+            print("Trying: " + PIN + "\n")
         pkResult = decryptWithPIN(mk, pkBlob, sSalt, iRounds, PIN)
         if pkResult.decrypted:
             if bf:
-                print('\n[+] Found PIN : ' + PIN)
+                print('\n[+] Found PIN: ' + PIN)
             return (pkResult, PIN)
     return (pkBlob, '')
