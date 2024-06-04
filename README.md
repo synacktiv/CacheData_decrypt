@@ -15,6 +15,7 @@ positional arguments:
   {pin,password}  Available subparser (pin or password)
     pin           BF pin.
     password      BF password.
+    dump          Dump CacheData header.
 
 options:
   -h, --help      show this help message and exit
@@ -59,8 +60,17 @@ python3 decrypt_cachedata.py pin -C CacheData -N secrets/Ngc/ -P PIN.txt \
 [+] Found PIN: 123456
 [+] Parsing CacheData file CacheData
 [+] CacheData file version is 0x2
-[+] CacheData expected sha256: b'e56c1ec9d053dfd0618aaed1f5bd0ebbaecf9ed11917a526d5714b7c86101423'
+[+] CacheData expected sha256: e56c1ec9d053dfd0618aaed1f5bd0ebbaecf9ed11917a526d5714b7c86101423
 [+] CacheData computed sha256: e56c1ec9d053dfd0618aaed1f5bd0ebbaecf9ed11917a526d5714b7c86101423
+[+] Parsing Cache node headers
+[+]     Found CacheNode of type 0x1, CryptoBlobSize = 0x30, EncryptedPRTSize = 0x18d0
+[+]     Found CacheNode of type 0x5, CryptoBlobSize = 0x3d7, EncryptedPRTSize = 0x1970
+[+] Parsing raw blob
+[+]     Found blob of size 0x30 (offset = 0x80/0x36d4)
+[+]     Found blob of size 0x18d0 (offset = 0xb4/0x36d4)
+[+]     Found blob of size 0x3d7 (offset = 0x1988/0x36d4)
+[+]     Found blob of size 0x1970 (offset = 0x1d64/0x36d4)
+[+] CacheData node of type PIN (0x5) has been found
 [+] RSA decrypt encrypted AES key 1
 [+] AES decrypt encrypted AES key 2
 [+] AES decrypt encrypted blob of size 0x1970 (DPAPI CredKey + PRT)
@@ -91,6 +101,19 @@ Start the script with the ``password`` argument and provide the CacheData file a
 ```
 python3 decrypt_cachedata.py password -C CacheData -P password.txt
 
+[+] Parsing CacheData file CacheData
+[+] CacheData file version is 0x2
+[+] CacheData expected sha256: e56c1ec9d053dfd0618aaed1f5bd0ebbaecf9ed11917a526d5714b7c86101423
+[+] CacheData computed sha256: e56c1ec9d053dfd0618aaed1f5bd0ebbaecf9ed11917a526d5714b7c86101423
+[+] Parsing Cache node headers
+[+]     Found CacheNode of type 0x1, CryptoBlobSize = 0x30, EncryptedPRTSize = 0x18d0
+[+]     Found CacheNode of type 0x5, CryptoBlobSize = 0x3d7, EncryptedPRTSize = 0x1970
+[+] Parsing raw blob
+[+]     Found blob of size 0x30 (offset = 0x80/0x36d4)
+[+]     Found blob of size 0x18d0 (offset = 0xb4/0x36d4)
+[+]     Found blob of size 0x3d7 (offset = 0x1988/0x36d4)
+[+]     Found blob of size 0x1970 (offset = 0x1d64/0x36d4)
+[+] CacheData node of type password (0x1) has been found
 [+] Password: 'P@ssw0rd!'
 [+] Dumping raw DPAPI Cred key, with GUID c0c17f7a-2b1e-43ff-a739-f698b29469b5 (0x40 bytes):
 00000000: D9 00 C8 20 3A 6E FB 10  EC AD AD 3A 02 28 31 7C  ... :n.....:.(1|
