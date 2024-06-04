@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import struct
 import json
+from typing import List
 import hexdump
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.backends import default_backend
-from .parse_cachedata import parse_cache_data
-from .dpapi_cred_key import DPAPICredKeyBlob
+from scripts.parse_cachedata import parse_cache_data, CacheDataNode
+from scripts.dpapi_cred_key import DPAPICredKeyBlob
 import dpapick3.eater as eater
 
 class BcryptRsaKeyBlob(eater.DataStruct):
@@ -173,23 +174,28 @@ def rsa_decrypt(
 
 
 
-def decrypt_cachedata_with_private_key(cache_data_file_path, rsa_priv_key_blob):
-    payload = parse_cache_data(cache_data_file_path)
-    
+def decrypt_cachedata_with_private_key(file_path, rsa_priv_key_blob):
+    cache_data_node_list : List[CacheDataNode] = parse_cache_data(file_path)
+    cache_data_node_pin = None
+    for entry in cache_data_node_list:
+        if entry.is_node_type_pin():
+            cache_data_node_pin = entry
+            break
+    if cache_data_node_pin is None:
+        raise Exception('No node of type PIN (0x5) found in CacheData file')
+    print('[+] CacheData node of type PIN (0x5) has been found')
     if not rsa_priv_key_blob.startswith(b"RSA2"):
         raise Exception("Bad private key format")
     rsa_priv_key_obj = BcryptRsaKeyBlob(rsa_priv_key_blob)
 
     # From bcrypt.h -> #define 	BCRYPT_RSAPUBLIC_MAGIC   0x31415352
-    rsa_public_magic_offset = payload.find(b"RSA1")
+    rsa_public_magic_offset = cache_data_node_pin.cryptoBlob.find(b"RSA1")
     if rsa_public_magic_offset == -1:
-        raise Exception("Unable to find BCRYPT_RSAPUBLIC_MAGIC in CacheData file.")
+        raise Exception("Unable to find BCRYPT_RSAPUBLIC_MAGIC in cryptoBlob for node of type PIN (0x5).")
     if rsa_public_magic_offset < 0x28:
         raise Exception("Unable to read SCardCacheData header in CacheData file.")
-    
-   
-    keys_cache_node_offset = rsa_public_magic_offset - 0x28
-    scard_blob = ScardCacheDataBlob(payload[keys_cache_node_offset:])
+
+    scard_blob = ScardCacheDataBlob(cache_data_node_pin.cryptoBlob)
 
     rsa_pub_key = BcryptRsaKeyBlob(scard_blob.ScardCert).get_rsa_public_key()
     ngc_asym_key_blob = NgcAsymetricKeyEncryptedBlob(scard_blob.ScardEncKey)
@@ -212,22 +218,9 @@ def decrypt_cachedata_with_private_key(cache_data_file_path, rsa_priv_key_blob):
     # AES-256 bit key size
     decryptedAESkey2 = decryptedAESkey2[:0x20]  # skip padding
 
-    encrypted_blob_offset = scard_blob.dwScardBlobSize + keys_cache_node_offset
-    # Weird, one null byte between the scard blob and start of encrypted prt file
-    # Try to a align on a dword boudnary...
-    if encrypted_blob_offset % 4 != 0:
-        encrypted_blob_offset = encrypted_blob_offset + (4 - (encrypted_blob_offset % 4))
-
-    encrypted_blob_size = int.from_bytes(
-        payload[encrypted_blob_offset : encrypted_blob_offset + 4], "little"
-    )
-    encrypted_blob_offset += 4  # skip size
-    encrypted_blob = payload[
-        encrypted_blob_offset : encrypted_blob_offset + encrypted_blob_size
-    ]
-    print(f"[+] AES decrypt encrypted blob of size 0x{encrypted_blob_size:x} (DPAPI CredKey + PRT)")
+    print(f"[+] AES decrypt encrypted blob of size 0x{len(cache_data_node_pin.encryptedPRTBlob):x} (DPAPI CredKey + PRT)")
     # AES Decrypt #2
-    decrypted_blob = aes_decrypt(encrypted_blob, decryptedAESkey2, scard_blob.ScardIV)
+    decrypted_blob = aes_decrypt(cache_data_node_pin.encryptedPRTBlob, decryptedAESkey2, scard_blob.ScardIV)
     # From cloudAP!UnlockCloudAPCacheNodeData
     version, flags, dword3, raw_dpapi_cred_key_size = struct.unpack("<IIII", decrypted_blob[0:0x10])
     assert version == 0x00
