@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 import struct
-import os
-import hashlib
-import binascii
 import json
 import hexdump
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.backends import default_backend
+from .parse_cachedata import parse_cache_data
 from .dpapi_cred_key import DPAPICredKeyBlob
 import dpapick3.eater as eater
-
 
 class BcryptRsaKeyBlob(eater.DataStruct):
     """
@@ -174,26 +171,6 @@ def rsa_decrypt(
 
     return rsa_priv_key.decrypt(ciphertext, padding.PKCS1v15())
 
-
-def parse_cache_data(file_path) -> bytes:
-    print(f'[+] Parsing CacheData file {file_path}')
-    with open(file_path, "rb") as f:
-        size_file = f.seek(0, os.SEEK_END)
-        f.seek(0, os.SEEK_SET)
-        # First 4 byte is a version number
-        (version,) = struct.unpack("<I", f.read(4))
-        print(f"[+] CacheData file version is 0x{version:x}")
-        # 32 following bytes is the sha256 expected checksum
-        sha256_checksum = f.read(32)
-        # Compute checksum to check if matching
-        payload = f.read(size_file - f.tell())
-    m = hashlib.sha256()
-    m.update(payload)
-    print(f"[+] CacheData expected sha256: {binascii.hexlify(sha256_checksum)}")
-    print(f"[+] CacheData computed sha256: {m.hexdigest()}")
-    assert version == 0x02
-    assert sha256_checksum == m.digest()
-    return payload
 
 
 def decrypt_cachedata_with_private_key(cache_data_file_path, rsa_priv_key_blob):
