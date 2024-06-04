@@ -3,7 +3,15 @@ import struct
 import hashlib
 import os
 import dpapick3.eater as eater
+from enum import IntEnum
 from typing import List
+
+class CacheNodeType(IntEnum):
+    PASSWORD = 1
+    UNKNOW_TWO = 2
+    UNKNOW_THREE = 3
+    UNKNOW_FOUR = 4
+    PIN = 5
 
 class CacheDataNodeHeader(eater.DataStruct):
     def __init__(self, raw):
@@ -39,6 +47,11 @@ class CacheDataNode:
     def encryptedPRTBlob(self, value):
         self._encryptedPrtBlob = value
 
+    def is_node_type_password(self) -> bool:
+        return self._header.dwNodeType == CacheNodeType.PASSWORD
+
+    def is_node_type_pin(self) -> bool:
+        return self._header.dwNodeType == CacheNodeType.PIN
 
 def parse_cache_data(file_path) -> List[CacheDataNode]:
     cache_data_node_list = list()
