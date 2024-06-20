@@ -5,12 +5,17 @@ from scripts import cryptokeys_decrypt
 from scripts import bruteforce_password
 from scripts import decrypt_cachedata_pin
 from scripts import parse_cachedata
+from scripts import dump_cachedata
 
 def list_of_args():
    parser = argparse.ArgumentParser(add_help = True, description = "CacheData bruteforcer. On a live windows host, to copy the folders with all subfolders and files: xcopy <folder> <destination> /H /E /G /C as SYSTEM. The script will automatically iterates on each Entra ID user who has logged in on the device. If you want to bruteforce the PIN for only one user, use the --sid parameter.")
    subparsers = parser.add_subparsers(dest='operation', help='Available subparser (pin or password)')
 
-   # The CacheData contains an entry protected by a PIN
+   # Dump the entries from the CacheData file
+   dump_parser = subparsers.add_parser('dump', help='Dump CacheData file entries.')
+   dump_parser.add_argument('-C', dest = 'CacheData', action="store", required=True, help="CacheDataFile")
+
+   # The CacheData contains an entry protected by a PIN, try to bruteforce the PIN
    pin_parser = subparsers.add_parser('pin', help='BF pin.')
    pin_parser.add_argument('-C', dest = 'CacheData', action = "store",required=True, help= "CacheDataFile")
    pin_parser.add_argument('-N', dest = 'NGC', action = "store", required=True, help= "NGC folder (C:\\Windows\\ServiceProfiles\\LocalService\\AppData\\Local\\Microsoft\\Ngc\\")
@@ -28,24 +33,24 @@ def list_of_args():
    password_parser.add_argument('-P', dest = 'PasswordsFile', action ="store",required=True , help="Passwords file")
    password_parser.add_argument('--verbose', dest='verbose', required=False, action="store_true", help='Verbose mode')
 
-   # Just dump header entries from the CacheData file
-   password_parser = subparsers.add_parser('dump', help='Dump CacheData header.')
-   password_parser.add_argument('-C', dest = 'CacheData', action = "store",required=True, help= "CacheDataFile")
-
    options = parser.parse_args()
-   if options.operation == 'pin':
+   if options.operation == 'dump':
+      pass
+   elif options.operation == 'pin':
       options.pins = parser_data.fileToList(options.PINFile)
    elif options.operation == 'password':
       options.passwords = parser_data.fileToList(options.PasswordsFile)
-   elif options.operation == 'dump':
-      pass
    else:
       parser.print_help()
    return options
 
 
 def main(arguments):
-      if arguments.operation == 'pin':
+
+      if arguments.operation == 'dump':
+         dump_cachedata.dump_cache_data(arguments.CacheData)
+
+      elif arguments.operation == 'pin':
          NGC = parser_data.extract_NGC_data(arguments)
 
          arrGUIDs = os.listdir(arguments.NGC)
@@ -82,8 +87,6 @@ def main(arguments):
       elif arguments.operation == 'password':
          bruteforce_password.bruteforce(arguments)
 
-      elif arguments.operation == 'dump':
-         parse_cachedata.parse_cache_data(arguments.CacheData)
 
 if __name__ == '__main__':
    main(list_of_args())

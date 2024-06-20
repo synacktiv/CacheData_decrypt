@@ -5,9 +5,11 @@ import hashlib
 import json
 from typing import List
 import hexdump
+import binascii
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.backends import default_backend
+from cryptography import x509
 from scripts.parse_cachedata import parse_cache_data, CacheDataNode
 from scripts.dpapi_cred_key import DPAPICredKeyBlob
 import dpapick3.eater as eater
@@ -36,7 +38,7 @@ class BcryptRsaKeyBlob(eater.DataStruct):
 
     def __init__(self, raw):
         eater.DataStruct.__init__(self, raw)
-    
+
     def parse(self, data):
         self.Magic = data.eat("L")
         self.BitLength = data.eat("L")
@@ -106,6 +108,19 @@ class NgcAsymetricKeyEncryptedBlob(eater.DataStruct):
         self.encryptedTPMKey = data.eat_string(self.dwEncryptedTPMKeyLength)
         assert data.ofs == data.end, "Invalid NgcAsymetricKeyEncryptedBlob size"
 
+    def __repr__(self):
+        s = ["[+] NgcAsymetricKeyEncryptedBlob",
+             "\tdwVersion                  = 0x%x" % self.dwVersion,
+             "\tdwEncryptedAESKey1Length   = 0x%x" % self.dwEncryptedAESKey1Length,
+             "\tdwIVLength                 = 0x%x" % self.dwIVLength,
+             "\tdwEncryptedAESKey2Length   = 0x%x" % self.dwEncryptedAESKey2Length,
+             "\tdwEncryptedTPMKeyLength    = 0x%x" % self.dwEncryptedTPMKeyLength,
+             "\tencryptedAESKey1           = %s" % binascii.hexlify(self.encryptedAESKey1),
+             "\tIV                         = %s" % binascii.hexlify(self.IV),
+             "\tencryptedAESKey2           = %s" % binascii.hexlify(self.encryptedAESKey2),
+             "\tencryptedTPMKey            = %s" % binascii.hexlify(self.encryptedTPMKey)
+        ]
+        return "\n".join(s)
 
 class ScardCacheDataBlob(eater.DataStruct):
     def __init__(self, raw):
@@ -123,10 +138,12 @@ class ScardCacheDataBlob(eater.DataStruct):
         self.dwScardCredKeyOffset = data.eat("L")
         self.dwScardCredKeySize = data.eat("L")
         assert data.ofs == self.dwScardCertOffset
+        # BcryptRsaKeyBlob
         self.ScardCert = data.eat_string(self.dwScardCertSize)
         assert data.ofs == self.dwScardIVOffset
         self.ScardIV = data.eat_string(self.dwScardIVSize)
         assert data.ofs == self.dwScardEncKeyOffset
+        # NgcAsymetricKeyEncryptedBlob
         self.ScardEncKey = data.eat_string(self.dwScardEncKeySize)
         assert data.ofs == self.dwScardCredKeyOffset
         self.ScardCredKey = data.eat_string(self.dwScardCredKeySize)
@@ -137,6 +154,22 @@ class ScardCacheDataBlob(eater.DataStruct):
             self.dwScardCredKeySize + 
             0x28
         )
+
+    def __repr__(self):
+        s = ["[+] ScardCacheDataBlob",
+            "\tdwScardversion               = 0x%x" % self.dwScardversion,
+            "\tdwScardBlobSize              = 0x%x" % self.dwScardBlobSize,
+            "\tdwScardCertOffset            = 0x%x" % self.dwScardCertOffset,
+            "\tdwScardCertSize              = 0x%x" % self.dwScardCertSize,
+            "\tdwScardIVOffset              = 0x%x" % self.dwScardIVOffset,
+            "\tdwScardIVSize                = 0x%x" % self.dwScardIVSize,
+            "\tdwScardEncKeyOffset          = 0x%x" % self.dwScardEncKeyOffset ,
+            "\tdwScardEncKeySize            = 0x%x" % self.dwScardEncKeySize,
+            "\tdwScardCredKeyOffset         = 0x%x" % self.dwScardCredKeyOffset,
+            "\tdwScardCredKeySize           = 0x%x" % self.dwScardCredKeySize
+        ]
+        return "\n".join(s)
+
 
 def decrypt_encrypted_AESKey2(
     aes_key_encrypted_2, aes_key_decrypted_1, IVKey1
@@ -174,9 +207,38 @@ def rsa_decrypt(
 
     return rsa_priv_key.decrypt(ciphertext, padding.PKCS1v15())
 
+def parse_scard_crypto_blob(cryptoBlob : bytes) -> tuple[ScardCacheDataBlob, x509.Certificate, bytes]:
+    print('[+] Reading ScardCacheDataBlob from cryptoBlob')
+    scard_blob = ScardCacheDataBlob(cryptoBlob)
+    print('[+] Reading PEM x509 certificate from ScardCert')
+    cert : x509.Certificate = x509.load_der_x509_certificate(scard_blob.ScardCert, default_backend())
+    print('[+] Reading NgcAsymetricKeyEncryptedBlob from ScardEncKey')
+    # TODO: support format of ScardEncKey
+    scard_enc_key = scard_blob.ScardEncKey
+    return scard_blob, cert, scard_enc_key
+
+
+def parse_pin_crypto_blob(cryptoBlob : bytes) ->  tuple[ScardCacheDataBlob, rsa.RSAPublicKey, NgcAsymetricKeyEncryptedBlob]:
+
+    # From bcrypt.h -> #define 	BCRYPT_RSAPUBLIC_MAGIC   0x31415352
+    rsa_public_magic_offset = cryptoBlob.find(b"RSA1")
+    if rsa_public_magic_offset == -1:
+        raise Exception("Unable to find BCRYPT_RSAPUBLIC_MAGIC in cryptoBlob for node of type PIN (0x5).")
+    if rsa_public_magic_offset < 0x28:
+        raise Exception("Unable to read SCardCacheData header in CacheData file.")
+
+    print('[+] Reading ScardCacheDataBlob from cryptoBlob')
+    scard_blob = ScardCacheDataBlob(cryptoBlob)
+    print('[+] Reading BcryptRsaKeyBlob from ScardCert')
+    rsa_pub_key = BcryptRsaKeyBlob(scard_blob.ScardCert).get_rsa_public_key()
+
+    print('[+] Reading NgcAsymetricKeyEncryptedBlob from ScardEncKey')
+    ngc_asym_key_blob = NgcAsymetricKeyEncryptedBlob(scard_blob.ScardEncKey)
+    return scard_blob, rsa_pub_key, ngc_asym_key_blob
 
 
 def decrypt_cachedata_with_private_key(file_path, rsa_priv_key_blob):
+
     cache_data_node_list : List[CacheDataNode] = parse_cache_data(file_path)
     cache_data_node_pin = None
     for entry in cache_data_node_list:
@@ -186,21 +248,12 @@ def decrypt_cachedata_with_private_key(file_path, rsa_priv_key_blob):
     if cache_data_node_pin is None:
         raise Exception('No node of type PIN (0x5) found in CacheData file')
     print('[+] CacheData node of type PIN (0x5) has been found')
+
+    scard_blob, rsa_pub_key, ngc_asym_key_blob = parse_pin_crypto_blob(cache_data_node_pin.cryptoBlob)
+
     if not rsa_priv_key_blob.startswith(b"RSA2"):
         raise Exception("Bad private key format")
     rsa_priv_key_obj = BcryptRsaKeyBlob(rsa_priv_key_blob)
-
-    # From bcrypt.h -> #define 	BCRYPT_RSAPUBLIC_MAGIC   0x31415352
-    rsa_public_magic_offset = cache_data_node_pin.cryptoBlob.find(b"RSA1")
-    if rsa_public_magic_offset == -1:
-        raise Exception("Unable to find BCRYPT_RSAPUBLIC_MAGIC in cryptoBlob for node of type PIN (0x5).")
-    if rsa_public_magic_offset < 0x28:
-        raise Exception("Unable to read SCardCacheData header in CacheData file.")
-
-    scard_blob = ScardCacheDataBlob(cache_data_node_pin.cryptoBlob)
-
-    rsa_pub_key = BcryptRsaKeyBlob(scard_blob.ScardCert).get_rsa_public_key()
-    ngc_asym_key_blob = NgcAsymetricKeyEncryptedBlob(scard_blob.ScardEncKey)
 
     # The rsa_priv_key_obj (encrypted version) come from the file Crypto/Keys/1c7c0d0195a393b00297fb4a1bc6efc2_c2e570f7-a2b1-4483-b686-ab4ab03d6a70
     # Which as the key {1EB9AF77-CC62-4C28-A173-19267DD63045}

@@ -7,11 +7,11 @@ from enum import IntEnum
 from typing import List
 
 class CacheNodeType(IntEnum):
-    PASSWORD = 1
+    PASSWORD = 1 # Cryptoblob is the output of DeriveKeyFromSecret
     UNKNOW_TWO = 2
     UNKNOW_THREE = 3
-    UNKNOW_FOUR = 4
-    PIN = 5
+    SCARD = 4  # CryptoBlob is decrypted by _DecryptWithSCard (Microsoft Smartcard Login)
+    PIN_NGC = 5  # CryptoBlob is decrypted by _DecryptWithNgc ()
 
 class CacheDataNodeHeader(eater.DataStruct):
     def __init__(self, raw):
@@ -47,14 +47,20 @@ class CacheDataNode:
     def encryptedPRTBlob(self, value):
         self._encryptedPrtBlob = value
 
+    def get_node_type(self) -> int:
+        return self._header.dwNodeType
+
     def is_node_type_password(self) -> bool:
-        return self._header.dwNodeType == CacheNodeType.PASSWORD
+        return self.get_node_type() == CacheNodeType.PASSWORD
 
     def is_node_type_pin(self) -> bool:
-        return self._header.dwNodeType == CacheNodeType.PIN
+        return self.get_node_type() == CacheNodeType.PIN_NGC
+
+    def is_node_type_scard(self) -> bool:
+        return self.get_node_type() == CacheNodeType.SCARD
 
 def parse_cache_data(file_path) -> List[CacheDataNode]:
-    cache_data_node_list = list()
+    cache_data_node_list : List[CacheDataNode] = list()
     print(f'[+] Parsing CacheData file {file_path}')
     with open(file_path, "rb") as f:
         file_size = f.seek(0, os.SEEK_END)
@@ -102,9 +108,12 @@ def parse_cache_data(file_path) -> List[CacheDataNode]:
         index_cache_data_node_list = i // 2
         # For each cache node, there is one cryptoBlob and one encryptedPRTBlob
         if i % 2 == 0:
+            assert cache_data_node_list[index_cache_data_node_list]._header.dwCryptoBlobSize == len(blob)
             cache_data_node_list[index_cache_data_node_list].cryptoBlob = blob
         else:
+            assert cache_data_node_list[index_cache_data_node_list]._header.dwEncryptedPRTSize == len(blob)
             cache_data_node_list[index_cache_data_node_list].encryptedPRTBlob = blob
         i += 1
 
     return cache_data_node_list
+
